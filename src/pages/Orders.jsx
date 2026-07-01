@@ -1,63 +1,131 @@
 import React, { useState } from 'react';
-import { Eye } from 'lucide-react';
-
-const initialOrders = [
-  { id: 1042, customer: 'Eleanor Vance', date: 'Today, 10:42 AM', total: 145.00, status: 'Fulfilled', items: 2 },
-  { id: 1043, customer: 'Arthur Pendelton', date: 'Today, 1:15 PM', total: 85.00, status: 'Processing', items: 1 },
-  { id: 1044, customer: 'Beatrice Ward', date: 'Yesterday, 9:30 AM', total: 210.00, status: 'Fulfilled', items: 3 },
-  { id: 1045, customer: 'Charles Bingley', date: 'Yesterday, 2:45 PM', total: 65.00, status: 'Processing', items: 1 },
-  { id: 1046, customer: 'Jane Fairfax', date: 'Jun 28, 11:20 AM', total: 170.00, status: 'Fulfilled', items: 2 },
-];
+import { Search, Eye } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '../lib/supabaseClient';
+import { Link } from 'react-router-dom';
 
 const Orders = () => {
-  const [orders, setOrders] = useState(initialOrders);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Fulfilled':
-        return <span className="badge badge-success">Fulfilled</span>;
-      case 'Processing':
-        return <span className="badge badge-pending">Processing</span>;
-      default:
-        return <span className="badge">{status}</span>;
+  const { data: orders, isLoading, error } = useQuery({
+    queryKey: ['orders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          id, order_number, status, payment_status, total, created_at,
+          customers (first_name, last_name, email)
+        `)
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      return data;
     }
-  };
+  });
+
+  const filteredOrders = orders?.filter(o => {
+    const searchString = `${o.order_number} ${o.customers?.first_name} ${o.customers?.last_name} ${o.customers?.email}`.toLowerCase();
+    const matchesSearch = searchString.includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  }) || [];
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex-between">
-        <h2>Order Management</h2>
+    <div className="admin-page">
+      <div className="admin-header">
+        <div>
+          <h1>Orders</h1>
+          <p>Manage and fulfill customer orders.</p>
+        </div>
       </div>
 
       <div className="admin-card">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Order ID</th>
-              <th>Customer</th>
-              <th>Date</th>
-              <th>Items</th>
-              <th>Total</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map(order => (
-              <tr key={order.id}>
-                <td>#{order.id}</td>
-                <td>{order.customer}</td>
-                <td>{order.date}</td>
-                <td>{order.items}</td>
-                <td>${order.total.toFixed(2)}</td>
-                <td>{getStatusBadge(order.status)}</td>
-                <td>
-                  <button className="action-btn"><Eye size={16} /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-actions">
+          <div className="search-box">
+            <Search size={20} className="search-icon" />
+            <input 
+              type="text" 
+              placeholder="Search by order # or customer..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="filters">
+            <select 
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="processing">Processing</option>
+              <option value="shipped">Shipped</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="loading-state">Loading orders...</div>
+        ) : error ? (
+          <div className="error-state">Error loading orders: {error.message}</div>
+        ) : (
+          <div className="table-container">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Order Number</th>
+                  <th>Customer</th>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>Payment</th>
+                  <th>Fulfillment</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map(order => (
+                  <tr key={order.id}>
+                    <td style={{ fontWeight: 500 }}>{order.order_number}</td>
+                    <td>
+                      <div>{order.customers ? `${order.customers.first_name} ${order.customers.last_name}` : 'Guest'}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--admin-text-light)' }}>
+                        {order.customers?.email}
+                      </div>
+                    </td>
+                    <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                    <td style={{ fontWeight: 500 }}>₹{order.total}</td>
+                    <td>
+                      <span className={`status-badge status-${order.payment_status}`}>
+                        {order.payment_status}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status-badge status-${order.status}`}>
+                        {order.status}
+                      </span>
+                    </td>
+                    <td>
+                      <Link to={`/orders/${order.id}`} className="btn-icon" title="View Order Details">
+                        <Eye size={18} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+                
+                {filteredOrders.length === 0 && (
+                  <tr>
+                    <td colSpan="7" className="empty-state text-center" style={{ padding: '3rem' }}>
+                      No orders found matching your criteria.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
