@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Package, ShoppingCart, LogOut, Home } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 import '../pages/Admin.css';
 
 const AdminLayout = () => {
@@ -41,7 +42,7 @@ const AdminLayout = () => {
             <Home size={20} />
             <span>Storefront</span>
           </a>
-          <button className="admin-nav-link logout-btn">
+          <button className="admin-nav-link logout-btn" onClick={() => supabase.auth.signOut()}>
             <LogOut size={20} />
             <span>Logout</span>
           </button>
